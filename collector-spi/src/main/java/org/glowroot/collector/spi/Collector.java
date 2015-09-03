@@ -18,6 +18,9 @@ package org.glowroot.collector.spi;
 import java.util.Collection;
 import java.util.Map;
 
+import org.glowroot.collector.spi.model.AggregateOuterClass.Aggregate;
+import org.glowroot.collector.spi.model.TraceOuterClass.Trace;
+
 public interface Collector {
 
     void collectTrace(Trace trace) throws Exception;

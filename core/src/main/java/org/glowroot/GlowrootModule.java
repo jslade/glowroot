@@ -55,9 +55,10 @@ import org.glowroot.agent.AgentModule;
 import org.glowroot.agent.ViewerAgentModule;
 import org.glowroot.agent.util.LazyPlatformMBeanServer;
 import org.glowroot.agent.util.SpyingLogbackFilter;
-import org.glowroot.collector.spi.Aggregate;
 import org.glowroot.collector.spi.Collector;
 import org.glowroot.collector.spi.GaugePoint;
+import org.glowroot.collector.spi.model.AggregateOuterClass.Aggregate;
+import org.glowroot.collector.spi.model.TraceOuterClass.Trace;
 import org.glowroot.common.util.Clock;
 import org.glowroot.common.util.Tickers;
 import org.glowroot.live.LiveAggregateRepository.LiveAggregateRepositoryNop;
@@ -434,7 +435,7 @@ public class GlowrootModule {
         private volatile @MonotonicNonNull Collector instance;
 
         @Override
-        public void collectTrace(org.glowroot.collector.spi.Trace trace) throws Exception {
+        public void collectTrace(Trace trace) throws Exception {
             if (instance != null) {
                 instance.collectTrace(trace);
             }

@@ -112,11 +112,16 @@ glowroot.controller('TransactionProfileCtrl', [
               $scope.showProfile = false;
               return;
             }
-            $scope.showProfile = data.sampleCount;
+            $scope.showProfile = data.unfilteredSampleCount;
             if ($scope.showProfile) {
-              $scope.sampleCount = data.sampleCount;
+              var rootNode = {
+                stackTraceElement: '',
+                sampleCount: data.unfilteredSampleCount,
+                childNodes: data.rootNodes
+              };
+              $scope.sampleCount = data.unfilteredSampleCount;
               $('#profileOuter').removeData('gtLoaded');
-              HandlebarsRendering.profileToggle(undefined, '#profileOuter', data);
+              HandlebarsRendering.profileToggle(undefined, '#profileOuter', rootNode);
             }
           })
           .error(function (data, status) {

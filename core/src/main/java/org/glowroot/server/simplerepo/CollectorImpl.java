@@ -18,10 +18,10 @@ package org.glowroot.server.simplerepo;
 import java.util.Collection;
 import java.util.Map;
 
-import org.glowroot.collector.spi.Aggregate;
 import org.glowroot.collector.spi.Collector;
 import org.glowroot.collector.spi.GaugePoint;
-import org.glowroot.collector.spi.Trace;
+import org.glowroot.collector.spi.model.AggregateOuterClass.Aggregate;
+import org.glowroot.collector.spi.model.TraceOuterClass.Trace;
 import org.glowroot.server.repo.helper.AlertingService;
 
 class CollectorImpl implements Collector {

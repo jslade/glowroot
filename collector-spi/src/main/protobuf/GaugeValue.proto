@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package org_glowroot_collector_spi;
+
+option java_package = "org.glowroot.collector.proto";
+
+message GaugeValue {
+  int64 capture_time = 1;
+  double value = 2;
+}

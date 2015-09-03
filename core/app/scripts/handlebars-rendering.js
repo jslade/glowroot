@@ -48,15 +48,15 @@ HandlebarsRendering = (function () {
   Handlebars.registerHelper('eachTimerOrdered', function (rootTimer, options) {
     var buffer = '';
 
-    function traverse(timer, nestingLevel) {
-      timer.nestingLevel = nestingLevel;
+    function traverse(timer, depth) {
+      timer.depth = depth;
       buffer += options.fn(timer);
-      if (timer.childNodes) {
-        timer.childNodes.sort(function (a, b) {
+      if (timer.childTimers) {
+        timer.childTimers.sort(function (a, b) {
           return b.totalNanos - a.totalNanos;
         });
-        $.each(timer.childNodes, function (index, nestedTimer) {
-          traverse(nestedTimer, nestingLevel + 1);
+        $.each(timer.childTimers, function (index, nestedTimer) {
+          traverse(nestedTimer, depth + 1);
         });
       }
     }
@@ -88,8 +88,8 @@ HandlebarsRendering = (function () {
         flattenedTimer.active = flattenedTimer.active || timer.active;
         flattenedTimer.count += timer.count;
       }
-      if (timer.childNodes) {
-        $.each(timer.childNodes, function (index, nestedTimer) {
+      if (timer.childTimers) {
+        $.each(timer.childTimers, function (index, nestedTimer) {
           traverse(nestedTimer, parentTimerNames.concat(timer));
         });
       }
@@ -116,8 +116,8 @@ HandlebarsRendering = (function () {
   });
 
   // allows empty string ""
-  Handlebars.registerHelper('ifNotNull', function (value, options) {
-    if (value !== null && value !== undefined) {
+  Handlebars.registerHelper('ifDisplayMessage', function (header, options) {
+    if (header.message || !header.error) {
       return options.fn(this);
     }
     return options.inverse(this);
@@ -163,7 +163,12 @@ HandlebarsRendering = (function () {
   });
 
   Handlebars.registerHelper('nanosToMillis', function (nanos) {
-    return formatMillis(nanos / 1000000);
+    if (nanos) {
+      return formatMillis(nanos / 1000000);
+    } else {
+      // protobuf trace entries do not json serialize 0 values, so they are undefined but should be rendered as zero
+      return formatMillis(0);
+    }
   });
 
   Handlebars.registerHelper('ifExistenceYes', function (existence, options) {
@@ -194,12 +199,11 @@ HandlebarsRendering = (function () {
     return options.inverse(this);
   });
 
-  // this is for the trace header customDetail
-  Handlebars.registerHelper('customDetailHtml', function (detail) {
+  Handlebars.registerHelper('headerDetailHtml', function (detail) {
     return messageDetailHtml(detail, true);
   });
 
-  Handlebars.registerHelper('messageDetailHtml', function (detail) {
+  Handlebars.registerHelper('entryDetailHtml', function (detail) {
     return messageDetailHtml(detail);
   });
 
@@ -266,11 +270,11 @@ HandlebarsRendering = (function () {
   });
 
   Handlebars.registerHelper('traceEntryIndent', function (traceEntry) {
-    return indent1 * (1 + traceEntry.nestingLevel);
+    return indent1 * (1 + traceEntry.depth);
   });
 
   Handlebars.registerHelper('timerIndent', function (timer) {
-    return indent1 * timer.nestingLevel;
+    return indent1 * timer.depth;
   });
 
   Handlebars.registerHelper('firstPart', function (message) {
@@ -291,8 +295,8 @@ HandlebarsRendering = (function () {
       var message = throwable.display.replace(/\n/g, '\n    ');
       html += escapeHtml(message) + '\n</div>';
       var i;
-      for (i = 0; i < throwable.stackTrace.length; i++) {
-        html += 'at ' + escapeHtml(throwable.stackTrace[i]) + '\n';
+      for (i = 0; i < throwable.stackTraceElements.length; i++) {
+        html += 'at ' + escapeHtml(throwable.stackTraceElements[i]) + '\n';
       }
       if (throwable.framesInCommonWithCause) {
         html += '... ' + throwable.framesInCommonWithCause + ' more\n';
@@ -311,30 +315,11 @@ HandlebarsRendering = (function () {
     var html = '<div style="white-space: pre;">';
     var i;
     for (i = 0; i < stackTrace.length; i++) {
-      html += escapeHtml(stackTraceElementText(stackTrace[i])) + '\n';
+      html += escapeHtml(stackTrace[i]) + '\n';
     }
     html += '</div>';
     return html;
   });
-
-  function stackTraceElementText(stackTraceElement) {
-    var className = stackTraceElement[0];
-    var methodName = stackTraceElement[1];
-    var fileName = stackTraceElement[2];
-    var lineNumber = stackTraceElement[3];
-    // this string construction matches java.lang.StackTraceElement.toString()
-    var str = className + '.' + methodName;
-    if (lineNumber === -2) {
-      str += '(Native Method)';
-    } else if (fileName && lineNumber >= 0) {
-      str += '(' + fileName + ':' + lineNumber + ')';
-    } else if (fileName) {
-      str += '(' + fileName + ')';
-    } else {
-      str += '(Unknown Source)';
-    }
-    return str;
-  }
 
   var mousedownPageX, mousedownPageY;
 
@@ -371,6 +356,7 @@ HandlebarsRendering = (function () {
         $selector.data('gtLoaded', true);
         // first time opening
         initTraceEntryLineLength();
+        traceEntries = flattenTraceEntries(traceEntries);
         // un-hide before building in case there are lots of trace entries, at least can see first few quickly
         $selector.removeClass('hide');
         renderNext(traceEntries, 0);
@@ -397,6 +383,7 @@ HandlebarsRendering = (function () {
               } else {
                 // first time opening
                 initTraceEntryLineLength();
+                data = flattenTraceEntries(data);
                 // un-hide before building in case there are lots of trace entries, at least can see first few quickly
                 $selector.removeClass('hide');
                 renderNext(data, 0);
@@ -465,7 +452,12 @@ HandlebarsRendering = (function () {
               } else if (data.expired) {
                 $selector.find('.gt-profile').html.append('<div style="padding: 1em;">This trace has expired</div>');
               } else {
-                buildMergedStackTree(data, $selector);
+                var rootNode = {
+                  stackTraceElement: '',
+                  sampleCount: data.unfilteredSampleCount,
+                  childNodes: data.rootNodes
+                };
+                buildMergedStackTree(rootNode, $selector);
               }
               $selector.removeClass('hide');
             })
@@ -500,6 +492,26 @@ HandlebarsRendering = (function () {
     traceEntryLineLength = Math.max(traceEntryLineLength, 80);
   }
 
+  function flattenTraceEntries(traceEntries) {
+    var flattenedTraceEntries = [];
+
+    function flattenAndRecurse(traceEntries, depth) {
+      var i;
+      var traceEntry;
+      for (i = 0; i < traceEntries.length; i++) {
+        traceEntry = traceEntries[i];
+        traceEntry.depth = depth;
+        flattenedTraceEntries.push(traceEntry);
+        if (traceEntry.childEntries) {
+          flattenAndRecurse(traceEntry.childEntries, depth + 1);
+        }
+      }
+    }
+
+    flattenAndRecurse(traceEntries, 0);
+    return flattenedTraceEntries;
+  }
+
   function renderNext(traceEntries, start, durationColumnWidth) {
     // large numbers of trace entries (e.g. 20,000) render much faster when grouped into sub-divs
     var batchSize;
@@ -521,15 +533,15 @@ HandlebarsRendering = (function () {
       batchSize = 500;
     }
     var html = '<div id="block' + start + '">';
-    var maxOffset;
+    var maxStartOffsetNanos;
     // find the last entry offset, not including trace entry exceeded/extended markers which have no offset
     for (i = traceEntries.length - 1; i >= 0; i--) {
-      maxOffset = traceEntries[i].offset;
-      if (maxOffset) {
+      maxStartOffsetNanos = traceEntries[i].startOffsetNanos;
+      if (maxStartOffsetNanos) {
         break;
       }
     }
-    var offsetColumnWidth = formatMillis(maxOffset / 1000000).length / 2 + indent1;
+    var offsetColumnWidth = formatMillis(maxStartOffsetNanos / 1000000).length / 2 + indent1;
     for (i = start; i < Math.min(start + batchSize, traceEntries.length); i++) {
       traceEntries[i].offsetColumnWidth = offsetColumnWidth;
       traceEntries[i].durationColumnWidth = durationColumnWidth;
@@ -730,10 +742,7 @@ HandlebarsRendering = (function () {
         var currMatchingNode = false;
         var stackTraceElement;
         for (i = 0; i < nodes.length; i++) {
-          if (!nodes[i].stackTraceElementText) {
-            nodes[i].stackTraceElementText = stackTraceElementText(nodes[i].stackTraceElement);
-          }
-          stackTraceElement = nodes[i].stackTraceElementText;
+          stackTraceElement = nodes[i].stackTraceElement;
           // don't match any part of "<multiple root nodes>"
           if (stackTraceElement !== MULTIPLE_ROOT_NODES && matchIncludes(stackTraceElement)) {
             currMatchingNode = true;
@@ -780,7 +789,7 @@ HandlebarsRendering = (function () {
           return 0;
         }
         for (i = 0; i < nodes.length; i++) {
-          var highlighted = highlightAndEscapeHtml(nodes[i].stackTraceElementText);
+          var highlighted = highlightAndEscapeHtml(nodes[i].stackTraceElement);
           $('#gtProfileNodeText' + nodes[i].id).html(highlighted);
           if (nodes.length > 1 && i === nodes.length - 1) {
             $('#gtProfileNodeTextUnexpanded' + lastNode.id).html(highlighted);
@@ -829,14 +838,8 @@ HandlebarsRendering = (function () {
           return '';
         }
         var nodes = [node];
-        if (!node.stackTraceElementText) {
-          node.stackTraceElementText = stackTraceElementText(node.stackTraceElement);
-        }
         while (node.childNodes && node.childNodes.length === 1 && !node.leafThreadState && !node.ellipsedSampleCount) {
           node = node.childNodes[0];
-          if (!node.stackTraceElementText) {
-            node.stackTraceElementText = stackTraceElementText(node.stackTraceElement);
-          }
           nodes.push(node);
         }
         var ret = '<span id="gtProfileNode' + node.id + '">';
@@ -852,18 +855,18 @@ HandlebarsRendering = (function () {
         if (nodes.length === 1) {
           ret += '<span style="visibility: hidden;"><strong>...</strong> </span>';
           ret += '<span class="gt-inline-block" style="padding: 1px 1em;">';
-          ret += '<span id="gtProfileNodeText' + node.id + '">' + escapeHtml(node.stackTraceElementText);
+          ret += '<span id="gtProfileNodeText' + node.id + '">' + escapeHtml(node.stackTraceElement);
           ret += '</span></span><br>';
         } else {
           ret += '<span>';
           ret += '<span class="gt-inline-block gt-unexpanded-content" style="vertical-align: top;">';
           ret += '<span class="gt-link-color"><strong>...</strong> </span>';
           ret += '<span id="gtProfileNodeTextUnexpanded' + nodes[nodes.length - 1].id + '">';
-          ret += escapeHtml(nodes[nodes.length - 1].stackTraceElementText) + '</span><br></span>';
+          ret += escapeHtml(nodes[nodes.length - 1].stackTraceElement) + '</span><br></span>';
           ret += '<span style="visibility: hidden;"><strong>...</strong> </span>';
           ret += '<span class="gt-inline-block gt-expanded-content hide" style="vertical-align: top;">';
           $.each(nodes, function (index, node) {
-            ret += '<span id="gtProfileNodeText' + node.id + '">' + escapeHtml(node.stackTraceElementText)
+            ret += '<span id="gtProfileNodeText' + node.id + '">' + escapeHtml(node.stackTraceElement)
                 + '</span><br>';
           });
           ret += '</span></span><br>';
