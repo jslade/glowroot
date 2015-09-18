@@ -2,8 +2,6 @@ sudo: false
 language: java
 jdk:
   - oraclejdk8
-  - oraclejdk7
-  - openjdk7
 before_install:
   - "export DISPLAY=:99.0"
   - sh -e /etc/init.d/xvfb start
@@ -30,27 +28,12 @@ matrix:
       # safari
     - jdk: oraclejdk8
       env: TARGET=saucelabs SAUCELABS_PLATFORM="OS X 10.10" SAUCELABS_BROWSER_NAME=safari SAUCELABS_BROWSER_VERSION=8
-    - jdk: oraclejdk8
-      env: TARGET=saucelabs SAUCELABS_PLATFORM="OS X 10.9" SAUCELABS_BROWSER_NAME=safari SAUCELABS_BROWSER_VERSION=7
-    - jdk: oraclejdk8
-      env: TARGET=saucelabs SAUCELABS_PLATFORM="OS X 10.8" SAUCELABS_BROWSER_NAME=safari SAUCELABS_BROWSER_VERSION=6
       # internet explorer
     - jdk: oraclejdk8
-      env: TARGET=saucelabs SAUCELABS_PLATFORM="Windows 8.1" SAUCELABS_BROWSER_NAME=iexplore SAUCELABS_BROWSER_VERSION=11
-    - jdk: oraclejdk8
-      env: TARGET=saucelabs SAUCELABS_PLATFORM="Windows 8" SAUCELABS_BROWSER_NAME=iexplore SAUCELABS_BROWSER_VERSION=10
-    - jdk: oraclejdk8
       env: TARGET=saucelabs SAUCELABS_PLATFORM="Windows 7" SAUCELABS_BROWSER_NAME=iexplore SAUCELABS_BROWSER_VERSION=11
-    - jdk: oraclejdk8
-      env: TARGET=saucelabs SAUCELABS_PLATFORM="Windows 7" SAUCELABS_BROWSER_NAME=iexplore SAUCELABS_BROWSER_VERSION=10
-    - jdk: oraclejdk8
-      env: TARGET=saucelabs SAUCELABS_PLATFORM="Windows 7" SAUCELABS_BROWSER_NAME=iexplore SAUCELABS_BROWSER_VERSION=9
 env:
   matrix:
     - TARGET=test GLOWROOT_UNSHADED=false GLOWROOT_HARNESS=javaagent
-    - TARGET=test GLOWROOT_UNSHADED=false GLOWROOT_HARNESS=local
-    - TARGET=test GLOWROOT_UNSHADED=true GLOWROOT_HARNESS=javaagent
-    - TARGET=test GLOWROOT_UNSHADED=true GLOWROOT_HARNESS=local
 before_deploy:
   - mkdir -p s3/snapshots
   - cp distribution/target/glowroot-*-dist.zip s3/snapshots
